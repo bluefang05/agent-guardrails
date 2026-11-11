@@ -1,0 +1,26 @@
+{
+  "name": "agent-guardrails",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A small coding-agent runner where tools are allowlisted, writes are jailed to a workspace, budgets are enforced and failures roll back.",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "demo": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "build:demo": "tsx scripts/build-demo.ts",
+    "test": "tsx --test tests/policy.test.ts tests/agent.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

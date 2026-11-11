@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent guardrails — run transcripts</title>
+    <meta name="description" content="Real run transcripts from a coding-agent runner with path, command and budget guardrails." />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --card: #ffffff;
+        --ink: #16181d;
+        --muted: #667085;
+        --line: #e3e6ea;
+        --green: #166534;
+        --green-bg: #dcfce7;
+        --amber: #92400e;
+        --amber-bg: #fef3c7;
+        --red: #991b1b;
+        --red-bg: #fee2e2;
+        --violet: #5b21b6;
+        --violet-bg: #ede9fe;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
+      header.page {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 2.4rem 1.5rem 0.6rem;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.7rem;
+        color: var(--muted);
+        margin: 0 0 0.4rem;
+      }
+      h1 { font-size: clamp(1.7rem, 3vw, 2.2rem); margin: 0 0 0.5rem; letter-spacing: -0.02em; }
+      .lead { max-width: 62ch; color: var(--muted); margin: 0; }
+      .disclosure {
+        max-width: 1180px;
+        margin: 1.2rem auto 0;
+        padding: 0.7rem 1rem;
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        border-radius: 9px;
+        font-size: 0.85rem;
+        color: #3730a3;
+      }
+      main { max-width: 1180px; margin: 0 auto; padding: 1.2rem 1.5rem 3rem; }
+      .policy {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1.3rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+      }
+      .policy h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 0.35rem; }
+      .policy p, .policy div { margin: 0; font-size: 0.86rem; }
+      .policy code {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.78rem;
+        background: #f3f4f6;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 0.05rem 0.32rem;
+        margin: 0 0.25rem 0.25rem 0;
+      }
+      .scenario {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1.1rem 1.2rem;
+        margin-bottom: 1.1rem;
+      }
+      .scenario-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+      .scenario-head h2 { font-size: 1.08rem; margin: 0 0 0.15rem; }
+      .muted { color: var(--muted); margin: 0; font-size: 0.88rem; }
+      .status {
+        font-size: 0.76rem;
+        font-weight: 650;
+        padding: 0.22rem 0.6rem;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .status.finished { background: var(--green-bg); color: var(--green); }
+      .status.blocked { background: var(--red-bg); color: var(--red); }
+      .status.budget_exceeded { background: var(--violet-bg); color: var(--violet); }
+      .task, .reason, .summary { font-size: 0.87rem; margin: 0.55rem 0 0; }
+      .reason { color: var(--red); }
+      .summary { color: var(--green); }
+      .table-wrap { overflow-x: auto; margin-top: 0.8rem; border: 1px solid var(--line); border-radius: 9px; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+      th, td { text-align: left; padding: 0.5rem 0.65rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { background: #fafbfc; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+      tr:last-child td { border-bottom: 0; }
+      .idx { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .tool code, .input {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .input { color: var(--muted); font-size: 0.76rem; margin-top: 0.2rem; word-break: break-all; }
+      .thought { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+      .decision {
+        display: inline-block;
+        font-size: 0.72rem;
+        font-weight: 650;
+        border-radius: 999px;
+        padding: 0.1rem 0.5rem;
+        background: var(--green-bg);
+        color: var(--green);
+      }
+      .decision.blocked { background: var(--red-bg); color: var(--red); }
+      .decision.error { background: var(--amber-bg); color: var(--amber); }
+      .decision.finished { background: var(--green-bg); color: var(--green); }
+      pre {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.76rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 9rem;
+        overflow-y: auto;
+        color: #1f2937;
+      }
+      .scenario-foot {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.2rem;
+        margin-top: 0.7rem;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+      footer.page { max-width: 1180px; margin: 0 auto; padding: 0 1.5rem 2.5rem; font-size: 0.78rem; color: var(--muted); }
+      footer.page code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    </style>
+  </head>
+  <body>
+    <header class="page">
+      <p class="eyebrow">Portfolio project · TypeScript</p>
+      <h1>Agent guardrails</h1>
+      <p class="lead">
+        A small coding-agent runner where every tool is allowlisted, writes are jailed to a
+        workspace, budgets are enforced and a failed run rolls back what it wrote.
+      </p>
+    </header>
+
+    <div class="disclosure">
+      These transcripts are generated by <code>npm run build:demo</code> executing the real
+      <code>runAgent()</code> against an in-memory workspace, a scripted model and a scripted
+      command runner. No LLM calls, no shell and no network here. The repo's tests cover the
+      same code paths.
+    </div>
+
+    <main>
+      <section class="policy">
+        <div><h2>Paths</h2><p>Only <code>src/</code> and <code>tests/</code>, extensions <code>.ts</code> <code>.json</code> <code>.md</code>. No <code>..</code>, no absolute paths, no <code>.env</code>.</p></div>
+        <div><h2>Commands</h2><p><code>npm test</code><code>npm run build</code><code>npm run typecheck</code><code>node --version</code><code>git status</code><code>git diff</code><code>git diff --stat</code></p></div>
+        <div><h2>Writes</h2><p>Max 32 KB per file, 96 KB per run, 4 files. Secret patterns (PEM keys, AWS and OpenAI-style keys) are refused.</p></div>
+        <div><h2>Budgets</h2><p>8 steps, 12 tool calls, 30 s wall clock. Any violation aborts and restores every file touched.</p></div>
+      </section>
+
+      
+    <article class="scenario">
+      <header class="scenario-head">
+        <div>
+          <h2>Fix a failing test</h2>
+          <p class="muted">Read the implementation, write a fix, run the test command, finish. Every call is allowed, so the run ends with status finished.</p>
+        </div>
+        <span class="status finished">Finished</span>
+      </header>
+
+      <p class="task"><strong>Task:</strong> The test for add() fails. Find the bug, fix it, and run the tests.</p>
+      
+      <p class="summary"><strong>Summary:</strong> add() subtracted instead of adding; fixed and npm test passes.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Tool</th><th>Decision</th><th>Output / reason</th></tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td class="idx">1</td>
+          <td class="tool">
+            <code>read_file</code>
+            <div class="thought">Read the implementation before changing anything.</div>
+            <div class="input">{&quot;path&quot;:&quot;src/math.ts&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>export function add(a: number, b: number): number {
+  return a - b
+}
+</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">2</td>
+          <td class="tool">
+            <code>write_file</code>
+            <div class="thought">The function subtracts; addition is a + b. Minimal edit.</div>
+            <div class="input">{&quot;path&quot;:&quot;src/math.ts&quot;,&quot;content&quot;:&quot;export function add(a: number, b: number): number {\n  return a + b\n}\n&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>wrote 69 bytes to src/math.ts</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">3</td>
+          <td class="tool">
+            <code>run_command</code>
+            <div class="thought">Run the test suite to verify the change.</div>
+            <div class="input">{&quot;command&quot;:&quot;npm&quot;,&quot;args&quot;:[&quot;test&quot;]}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>✔ add returns the sum (1 test)
+ℹ pass 1
+ℹ fail 0</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">4</td>
+          <td class="tool">
+            <code>finish</code>
+            
+            <div class="input">{&quot;summary&quot;:&quot;add() subtracted instead of adding; fixed and npm test passes.&quot;}</div>
+          </td>
+          <td><span class="decision finished">finished</span></td>
+          <td><pre>add() subtracted instead of adding; fixed and npm test passes.</pre></td>
+        </tr></tbody>
+        </table>
+      </div>
+
+      <footer class="scenario-foot">
+        <span><strong>Written:</strong> src/math.ts</span>
+        <span><strong>Rolled back:</strong> none</span>
+        <span><strong>Duration:</strong> 6ms</span>
+        <span><strong>Budgets:</strong> 8 steps · 12 calls · 4 writes · 30000ms</span>
+      </footer>
+    </article>
+
+    <article class="scenario">
+      <header class="scenario-head">
+        <div>
+          <h2>Path escape and rollback</h2>
+          <p class="muted">The model writes a scratch file, then tries to write .env. The second write is blocked and the first one is rolled back.</p>
+        </div>
+        <span class="status blocked">Blocked</span>
+      </header>
+
+      <p class="task"><strong>Task:</strong> Add a scratch module, then store the API key in .env.</p>
+      <p class="reason"><strong>Stopped:</strong> environment files are blocked (.env)</p>
+      
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Tool</th><th>Decision</th><th>Output / reason</th></tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td class="idx">1</td>
+          <td class="tool">
+            <code>write_file</code>
+            <div class="thought">Create a temporary module first.</div>
+            <div class="input">{&quot;path&quot;:&quot;src/scratch.ts&quot;,&quot;content&quot;:&quot;export const scratch = true\n&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>wrote 28 bytes to src/scratch.ts</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">2</td>
+          <td class="tool">
+            <code>write_file</code>
+            <div class="thought">Persist the key for later steps.</div>
+            <div class="input">{&quot;path&quot;:&quot;.env&quot;,&quot;content&quot;:&quot;OPENAI_API_KEY=sk-demo-not-a-real-key-000000000000&quot;}</div>
+          </td>
+          <td><span class="decision blocked">blocked</span></td>
+          <td><pre>environment files are blocked (.env)</pre></td>
+        </tr></tbody>
+        </table>
+      </div>
+
+      <footer class="scenario-foot">
+        <span><strong>Written:</strong> src/scratch.ts</span>
+        <span><strong>Rolled back:</strong> src/scratch.ts</span>
+        <span><strong>Duration:</strong> 0ms</span>
+        <span><strong>Budgets:</strong> 8 steps · 12 calls · 4 writes · 30000ms</span>
+      </footer>
+    </article>
+
+    <article class="scenario">
+      <header class="scenario-head">
+        <div>
+          <h2>Command outside the allowlist</h2>
+          <p class="muted">The model tries to publish a package. The command is not on the allowlist, the run stops, and earlier writes are restored.</p>
+        </div>
+        <span class="status blocked">Blocked</span>
+      </header>
+
+      <p class="task"><strong>Task:</strong> Bump the version and publish the package.</p>
+      <p class="reason"><strong>Stopped:</strong> command is not in the allowlist: npm publish</p>
+      
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Tool</th><th>Decision</th><th>Output / reason</th></tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td class="idx">1</td>
+          <td class="tool">
+            <code>write_file</code>
+            <div class="thought">Update the version first.</div>
+            <div class="input">{&quot;path&quot;:&quot;src/version.ts&quot;,&quot;content&quot;:&quot;export const version = &#39;1.0.1&#39;\n&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>wrote 31 bytes to src/version.ts</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">2</td>
+          <td class="tool">
+            <code>run_command</code>
+            <div class="thought">Publish the package.</div>
+            <div class="input">{&quot;command&quot;:&quot;npm&quot;,&quot;args&quot;:[&quot;publish&quot;]}</div>
+          </td>
+          <td><span class="decision blocked">blocked</span></td>
+          <td><pre>command is not in the allowlist: npm publish</pre></td>
+        </tr></tbody>
+        </table>
+      </div>
+
+      <footer class="scenario-foot">
+        <span><strong>Written:</strong> src/version.ts</span>
+        <span><strong>Rolled back:</strong> src/version.ts</span>
+        <span><strong>Duration:</strong> 0ms</span>
+        <span><strong>Budgets:</strong> 8 steps · 12 calls · 4 writes · 30000ms</span>
+      </footer>
+    </article>
+
+    <article class="scenario">
+      <header class="scenario-head">
+        <div>
+          <h2>Step budget exhausted</h2>
+          <p class="muted">A model that keeps exploring without finishing is stopped by the step budget. The file it had written is rolled back.</p>
+        </div>
+        <span class="status budget_exceeded">Budget exhausted</span>
+      </header>
+
+      <p class="task"><strong>Task:</strong> Find the bug by reading the same file forever.</p>
+      <p class="reason"><strong>Stopped:</strong> step budget of 4 exhausted</p>
+      
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Tool</th><th>Decision</th><th>Output / reason</th></tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td class="idx">1</td>
+          <td class="tool">
+            <code>write_file</code>
+            
+            <div class="input">{&quot;path&quot;:&quot;src/in-progress.ts&quot;,&quot;content&quot;:&quot;export const inProgress = true\n&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>wrote 31 bytes to src/in-progress.ts</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">2</td>
+          <td class="tool">
+            <code>read_file</code>
+            
+            <div class="input">{&quot;path&quot;:&quot;src/math.ts&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>export function add(a: number, b: number): number {
+  return a - b
+}
+</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">3</td>
+          <td class="tool">
+            <code>read_file</code>
+            
+            <div class="input">{&quot;path&quot;:&quot;src/math.ts&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>export function add(a: number, b: number): number {
+  return a - b
+}
+</pre></td>
+        </tr>
+        <tr>
+          <td class="idx">4</td>
+          <td class="tool">
+            <code>read_file</code>
+            
+            <div class="input">{&quot;path&quot;:&quot;src/math.ts&quot;}</div>
+          </td>
+          <td><span class="decision allowed">allowed</span></td>
+          <td><pre>export function add(a: number, b: number): number {
+  return a - b
+}
+</pre></td>
+        </tr></tbody>
+        </table>
+      </div>
+
+      <footer class="scenario-foot">
+        <span><strong>Written:</strong> src/in-progress.ts</span>
+        <span><strong>Rolled back:</strong> src/in-progress.ts</span>
+        <span><strong>Duration:</strong> 1ms</span>
+        <span><strong>Budgets:</strong> 4 steps · 12 calls · 4 writes · 30000ms</span>
+      </footer>
+    </article>
+    </main>
+
+    <footer class="page">
+      Generated from <code>src/scenarios.ts</code>. The optional OpenAI adapter in
+      <code>src/llm.ts</code> is not used by this page.
+    </footer>
+  </body>
+</html>
